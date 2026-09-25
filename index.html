@@ -428,8 +428,9 @@
         <div class="card"><div class="lbl">Net (period)</div><div class="fig" id="sumNet">0</div></div>
       </div>
 
-      <h3 class="dh">Account balances <span class="tag">all-time</span></h3>
+      <h3 class="dh">Account balances <span class="tag">all-time — tap one for its ledger</span></h3>
       <div class="acct-list" id="acctList"></div>
+      <div id="acctTxTableHost"></div>
 
       <div id="expenseDonutWrap"></div>
 
@@ -440,6 +441,28 @@
       <h3 class="dh">Income by source</h3>
       <div class="cat-list" id="incCatList"></div>
       <div id="incTxTableHost"></div>
+    </section>
+
+    <!-- HISTORY -->
+    <section class="view hidden" id="view-history">
+      <div class="date-range">
+        <input type="date" id="histStart">
+        <input type="date" id="histEnd">
+      </div>
+      <div class="quick-row" id="histQuick"></div>
+      <div class="quick-row">
+        <button data-type="all" class="h-type-btn on">All</button>
+        <button data-type="income" class="h-type-btn">Income</button>
+        <button data-type="expense" class="h-type-btn">Expense</button>
+      </div>
+      <div class="setup-add" style="margin-bottom:16px;">
+        <select id="histAccount"><option value="all">All accounts</option></select>
+        <select id="histCategory"><option value="all">All categories</option></select>
+      </div>
+      <div id="histTableHost"></div>
+      <div style="text-align:center;margin-top:14px;">
+        <button id="histLoadMore" class="backup-actions" style="display:inline-block;padding:11px 20px;border-radius:11px;border:1px solid var(--border);background:var(--surface-alt);color:var(--text);font-size:13px;cursor:pointer;">Load more</button>
+      </div>
     </section>
 
     <!-- SETUP -->
@@ -489,6 +512,7 @@
     <button data-view="expense" class="active"><span class="ic">➖</span>Expense</button>
     <button data-view="income"><span class="ic">➕</span>Income</button>
     <button data-view="dashboard"><span class="ic">📊</span>Dashboard</button>
+    <button data-view="history"><span class="ic">📜</span>History</button>
     <button data-view="setup"><span class="ic">⚙️</span>Setup</button>
   </nav>
 </div>
@@ -521,7 +545,10 @@ const state = {
   expSel: {category:null, account:null, member:null},
   incSel: {category:null, account:null, member:null},
   dashStart: null, dashEnd: null,
-  openCat: {expense:null, income:null}
+  openCat: {expense:null, income:null},
+  openAccount: null,
+  historyPage: 1,
+  historyFilters: {type:'all', account:'all', category:'all', start:null, end:null}
 };
 
 const fmt = n => Math.round(n).toLocaleString('en-PK');
@@ -568,11 +595,14 @@ async function enterApp(){
   document.getElementById('mainScreen').classList.remove('hidden');
   await loadAllData();
   buildDenoms();
+  wireStaticButtons();
   renderExpenseView();
   renderIncomeView();
   setupDashboardDefaults();
   renderDashboard();
   renderSetup();
+  setupHistoryDefaults();
+  renderHistory();
 }
 
 /* ============================================================
@@ -645,8 +675,6 @@ function renderExpenseView(){
   wireSelectGrid('expCategoryGrid', id=>{ state.expSel.category=id; updateSaveState('exp'); });
   wireSelectGrid('expAccountGrid', id=>{ state.expSel.account=id; updateSaveState('exp'); });
   wireSelectGrid('expMemberGrid', id=>{ state.expSel.member=id; updateSaveState('exp'); });
-
-  document.getElementById('expSaveBtn').addEventListener('click', ()=>saveTransaction('expense'));
 }
 
 function renderIncomeView(){
@@ -661,13 +689,19 @@ function renderIncomeView(){
   wireSelectGrid('incCategoryGrid', id=>{ state.incSel.category=id; updateSaveState('inc'); });
   wireSelectGrid('incAccountGrid', id=>{ state.incSel.account=id; updateSaveState('inc'); });
   wireSelectGrid('incMemberGrid', id=>{ state.incSel.member=id; updateSaveState('inc'); });
+}
 
-  document.getElementById('incSaveBtn').addEventListener('click', ()=>saveTransaction('income'));
+// Guards against attaching the same listener twice when a render function
+// runs again (e.g. after adding a category in Setup rebuilds these grids).
+function wireOnce(el, event, handler){
+  if(!el || el.dataset.wired) return;
+  el.dataset.wired = '1';
+  el.addEventListener(event, handler);
 }
 
 function wireSelectGrid(gridId, onSelect){
   const grid = document.getElementById(gridId);
-  grid.addEventListener('click', e=>{
+  wireOnce(grid, 'click', e=>{
     const b = e.target.closest('button'); if(!b) return;
     [...grid.children].forEach(c=>c.classList.remove('sel'));
     b.classList.add('sel');
@@ -709,7 +743,54 @@ async function saveTransaction(type){
   updateSaveState(isExp?'exp':'inc');
 
   await refreshTransactions();
-  renderDashboard();
+  refreshActiveDataViews();
+}
+
+/* ============================================================
+   ONE-TIME STATIC LISTENERS (attached exactly once, not on every render)
+   ============================================================ */
+function wireStaticButtons(){
+  document.getElementById('expSaveBtn').addEventListener('click', ()=>saveTransaction('expense'));
+  document.getElementById('incSaveBtn').addEventListener('click', ()=>saveTransaction('income'));
+
+  document.getElementById('addCatBtn').addEventListener('click', async ()=>{
+    const kind = document.getElementById('newCatKind').value;
+    const name = document.getElementById('newCatName').value.trim();
+    if(!name) return;
+    const existing = state.categories.filter(c=>c.kind===kind);
+    const maxOrder = existing.reduce((m,c)=>Math.max(m,c.sort_order||0),0);
+    const { error } = await sb.from('categories').insert({kind, name, sort_order: maxOrder+1});
+    if(error){ toast(error.message.includes('duplicate')?'That category already exists':error.message); return; }
+    document.getElementById('newCatName').value='';
+    await reloadReferenceData();
+    toast('Category added');
+  });
+
+  document.getElementById('addAcctBtn').addEventListener('click', async ()=>{
+    const name = document.getElementById('newAcctName').value.trim();
+    if(!name) return;
+    const maxOrder = state.accounts.reduce((m,a)=>Math.max(m,a.sort_order||0),0);
+    const { error } = await sb.from('accounts').insert({name, sort_order:maxOrder+1});
+    if(error){ toast(error.message.includes('duplicate')?'That account already exists':error.message); return; }
+    document.getElementById('newAcctName').value='';
+    await reloadReferenceData();
+    toast('Account added');
+  });
+
+  document.getElementById('addMemberBtn').addEventListener('click', async ()=>{
+    const name = document.getElementById('newMemberName').value.trim();
+    if(!name) return;
+    const maxOrder = state.members.reduce((m,x)=>Math.max(m,x.sort_order||0),0);
+    const { error } = await sb.from('members').insert({name, sort_order:maxOrder+1});
+    if(error){ toast(error.message.includes('duplicate')?'That member already exists':error.message); return; }
+    document.getElementById('newMemberName').value='';
+    await reloadReferenceData();
+    toast('Member added');
+  });
+
+  document.getElementById('exportBtn').addEventListener('click', exportBackup);
+  document.getElementById('importBtn').addEventListener('click', ()=>document.getElementById('importFile').click());
+  document.getElementById('importFile').addEventListener('change', importBackup);
 }
 
 /* ============================================================
@@ -723,10 +804,12 @@ document.getElementById('bottomNav').addEventListener('click', e=>{
   document.querySelectorAll('main .view').forEach(v=>v.classList.add('hidden'));
   document.getElementById('view-'+view).classList.remove('hidden');
   const titles = {expense:['Add Expense','Tap to build the amount'], income:['Add Income','Tap to build the amount'],
-    dashboard:['Dashboard','Balances & category totals'], setup:['Setup','Categories, accounts & members']};
+    dashboard:['Dashboard','Balances & category totals'], history:['All Transactions','Every entry, filterable'],
+    setup:['Setup','Categories, accounts & members']};
   document.getElementById('pageTitle').textContent = titles[view][0];
   document.getElementById('pageSub').textContent = titles[view][1];
   if(view==='dashboard') renderDashboard();
+  if(view==='history') renderHistory();
 });
 
 /* ============================================================
@@ -774,17 +857,32 @@ function renderDashboard(){
   netEl.textContent = fmt(totalIncome-totalExpense);
   netEl.style.color = (totalIncome-totalExpense)>=0 ? 'var(--income)' : 'var(--danger)';
 
-  // Account balances (all-time)
+  // Account balances (all-time, but tap a row to see that account's transactions in the selected period)
   const accHtml = state.accounts.filter(a=>a.is_active).map(a=>{
     const inc = state.transactions.filter(t=>t.account_id===a.id && t.type==='income').reduce((s,t)=>s+Number(t.amount),0);
     const exp = state.transactions.filter(t=>t.account_id===a.id && t.type==='expense').reduce((s,t)=>s+Number(t.amount),0);
     const bal = inc-exp;
-    return `<div class="acct-row"><div class="nm">${ACC_ICONS[a.name]||'💳'} ${a.name}</div><div class="bal ${bal<0?'neg':''}">PKR ${fmt(bal)}</div></div>`;
+    return `<div class="acct-row" data-acc="${a.id}" style="cursor:pointer;"><div class="nm">${ACC_ICONS[a.name]||'💳'} ${a.name}</div><div class="bal ${bal<0?'neg':''}">PKR ${fmt(bal)}</div></div>`;
   }).join('');
   const allInc = state.transactions.filter(t=>t.type==='income').reduce((s,t)=>s+Number(t.amount),0);
   const allExp = state.transactions.filter(t=>t.type==='expense').reduce((s,t)=>s+Number(t.amount),0);
-  document.getElementById('acctList').innerHTML = accHtml +
+  const acctListEl = document.getElementById('acctList');
+  acctListEl.innerHTML = accHtml +
     `<div class="acct-total-row"><span>Total across all accounts</span><span class="bal">PKR ${fmt(allInc-allExp)}</span></div>`;
+
+  const acctHostEl = document.getElementById('acctTxTableHost');
+  acctListEl.querySelectorAll('.acct-row').forEach(row=>{
+    row.addEventListener('click', ()=>{
+      const accId = row.dataset.acc;
+      state.openAccount = state.openAccount===accId ? null : accId;
+      renderAccountTxTable(accId, filtered, acctHostEl, state.openAccount===accId);
+    });
+  });
+  if(state.openAccount && state.accounts.some(a=>a.id===state.openAccount && a.is_active)){
+    renderAccountTxTable(state.openAccount, filtered, acctHostEl, true);
+  } else {
+    acctHostEl.innerHTML = '';
+  }
 
   renderCatList('expense', filtered, totalExpense);
   renderCatList('income', filtered, totalIncome);
@@ -890,24 +988,26 @@ function wireTxTable(hostEl, kind, catId, filtered){
       if(error){ toast('Delete failed: '+error.message); return; }
       toast('Transaction deleted');
       await refreshTransactions();
-      renderDashboard();
+      refreshActiveDataViews();
     });
   });
   hostEl.querySelectorAll('button.edit').forEach(btn=>{
-    btn.addEventListener('click', (e)=> openEditRow(e.target.closest('tr'), kind));
+    btn.addEventListener('click', (e)=> openEditRow(e.target.closest('tr')));
   });
 }
 
-function openEditRow(tr, kind){
+function openEditRow(tr){
   const id = tr.dataset.id;
   const t = state.transactions.find(x=>x.id===id);
   if(!t) return;
+  const kind = t.type;
+  const colCount = tr.children.length;
   const cats = state.categories.filter(c=>c.kind===kind && c.is_active);
   const catOpts = cats.map(c=>`<option value="${c.id}" ${c.id===t.category_id?'selected':''}>${c.name}</option>`).join('');
   const accOpts = state.accounts.filter(a=>a.is_active).map(a=>`<option value="${a.id}" ${a.id===t.account_id?'selected':''}>${a.name}</option>`).join('');
   const memOpts = state.members.filter(m=>m.is_active).map(m=>`<option value="${m.id}" ${m.id===t.member_id?'selected':''}>${m.name}</option>`).join('');
   tr.innerHTML = `
-    <td colspan="6">
+    <td colspan="${colCount}">
       <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:4px 0;">
         <input type="number" class="e-amt" value="${t.amount}" style="width:90px;">
         <select class="e-cat">${catOpts}</select>
@@ -919,7 +1019,7 @@ function openEditRow(tr, kind){
         <button class="e-cancel" style="background:var(--surface-alt);border:1px solid var(--border);color:var(--muted);border-radius:7px;padding:6px 10px;font-size:11px;cursor:pointer;">Cancel</button>
       </div>
     </td>`;
-  tr.querySelector('.e-cancel').addEventListener('click', ()=> renderDashboard());
+  tr.querySelector('.e-cancel').addEventListener('click', ()=> refreshActiveDataViews());
   tr.querySelector('.e-save').addEventListener('click', async ()=>{
     const amount = Number(tr.querySelector('.e-amt').value);
     const category_id = tr.querySelector('.e-cat').value;
@@ -933,8 +1033,197 @@ function openEditRow(tr, kind){
     if(error){ toast('Update failed: '+error.message); return; }
     toast('Transaction updated');
     await refreshTransactions();
-    renderDashboard();
+    refreshActiveDataViews();
   });
+}
+
+// Re-renders whichever data views are currently visible so an edit/delete/save
+// made from one tab (Dashboard, History) is reflected immediately everywhere.
+function refreshActiveDataViews(){
+  if(!document.getElementById('view-dashboard').classList.contains('hidden')) renderDashboard();
+  if(!document.getElementById('view-history').classList.contains('hidden')) renderHistory();
+}
+
+function renderAccountTxRow(t){
+  const cat = state.categories.find(c=>c.id===t.category_id);
+  const mem = state.members.find(m=>m.id===t.member_id);
+  const d = new Date(t.occurred_at);
+  const sign = t.type==='income' ? '+' : '−';
+  const color = t.type==='income' ? 'var(--income)' : 'var(--expense)';
+  return `<tr data-id="${t.id}">
+    <td>${d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})}</td>
+    <td style="color:${color};font-weight:600;">${sign} PKR ${fmt(t.amount)}</td>
+    <td>${cat?(cat.icon||CAT_ICONS[cat.name]||'📌')+' '+cat.name:'—'}</td>
+    <td>${mem?mem.name:'—'}</td>
+    <td>${t.note||''}</td>
+    <td class="rowbtns"><button class="edit">Edit</button><button class="del">Del</button></td>
+  </tr>`;
+}
+
+function renderAccountTxTable(accId, filtered, hostEl, show){
+  if(!show){ hostEl.innerHTML=''; return; }
+  const acc = state.accounts.find(a=>a.id===accId);
+  const rows = filtered.filter(t=>t.account_id===accId).sort((a,b)=> b.occurred_at.localeCompare(a.occurred_at));
+  if(rows.length===0){
+    hostEl.innerHTML = `<div class="empty-state">No transactions on ${acc?acc.name:'this account'} in the selected period.</div>`;
+    return;
+  }
+  hostEl.innerHTML = `<div class="tx-table-wrap"><table class="tx-table"><thead><tr>
+    <th>Date</th><th>Amount</th><th>Category</th><th>By</th><th>Note</th><th></th>
+  </tr></thead><tbody>${rows.map(renderAccountTxRow).join('')}</tbody></table></div>
+  <p style="color:var(--muted);font-size:11.5px;margin:8px 2px 0;">${rows.length} transaction${rows.length!==1?'s':''} on ${acc?acc.name:''} in the selected period</p>`;
+
+  hostEl.querySelectorAll('button.del').forEach(btn=>{
+    btn.addEventListener('click', async (e)=>{
+      const tr = e.target.closest('tr');
+      if(!confirm('Delete this transaction?')) return;
+      const { error } = await sb.from('transactions').delete().eq('id', tr.dataset.id);
+      if(error){ toast('Delete failed: '+error.message); return; }
+      toast('Transaction deleted');
+      await refreshTransactions();
+      refreshActiveDataViews();
+    });
+  });
+  hostEl.querySelectorAll('button.edit').forEach(btn=>{
+    btn.addEventListener('click', (e)=> openEditRow(e.target.closest('tr')));
+  });
+}
+
+/* ============================================================
+   HISTORY — all transactions, filterable
+   ============================================================ */
+function setupHistoryDefaults(){
+  state.historyFilters.start = '2000-01-01';
+  state.historyFilters.end = todayStr(new Date());
+  document.getElementById('histStart').value = state.historyFilters.start;
+  document.getElementById('histEnd').value = state.historyFilters.end;
+
+  document.getElementById('histStart').addEventListener('change', e=>{ state.historyFilters.start=e.target.value; state.historyPage=1; renderHistory(); });
+  document.getElementById('histEnd').addEventListener('change', e=>{ state.historyFilters.end=e.target.value; state.historyPage=1; renderHistory(); });
+
+  const quicks = [
+    ['This month', ()=>{ const n=new Date(); return [todayStr(new Date(n.getFullYear(),n.getMonth(),1)), todayStr(n)]; }],
+    ['Last month', ()=>{ const n=new Date(); const s=new Date(n.getFullYear(),n.getMonth()-1,1); const e=new Date(n.getFullYear(),n.getMonth(),0); return [todayStr(s), todayStr(e)]; }],
+    ['This year', ()=>{ const n=new Date(); return [todayStr(new Date(n.getFullYear(),0,1)), todayStr(n)]; }],
+    ['All time', ()=>['2000-01-01', todayStr(new Date())]],
+  ];
+  document.getElementById('histQuick').innerHTML = quicks.map(q=>`<button>${q[0]}</button>`).join('');
+  [...document.getElementById('histQuick').children].forEach((btn,i)=>{
+    btn.addEventListener('click', ()=>{
+      const [s,e] = quicks[i][1]();
+      state.historyFilters.start=s; state.historyFilters.end=e;
+      document.getElementById('histStart').value=s; document.getElementById('histEnd').value=e;
+      state.historyPage=1; renderHistory();
+    });
+  });
+
+  document.querySelectorAll('.h-type-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('.h-type-btn').forEach(b=>b.classList.remove('on'));
+      btn.classList.add('on');
+      state.historyFilters.type = btn.dataset.type;
+      state.historyFilters.category = 'all';
+      state.historyPage = 1;
+      renderHistoryCategoryOptions();
+      renderHistory();
+    });
+  });
+
+  document.getElementById('histAccount').addEventListener('change', e=>{ state.historyFilters.account=e.target.value; state.historyPage=1; renderHistory(); });
+  document.getElementById('histCategory').addEventListener('change', e=>{ state.historyFilters.category=e.target.value; state.historyPage=1; renderHistory(); });
+
+  document.getElementById('histLoadMore').addEventListener('click', ()=>{ state.historyPage++; renderHistory(true); });
+}
+
+function renderHistoryCategoryOptions(){
+  const sel = document.getElementById('histCategory');
+  const f = state.historyFilters;
+  const cats = f.type==='all' ? state.categories : state.categories.filter(c=>c.kind===f.type);
+  sel.innerHTML = `<option value="all">All categories</option>` +
+    cats.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  sel.value = 'all';
+}
+
+function renderHistoryAccountOptions(){
+  const sel = document.getElementById('histAccount');
+  sel.innerHTML = `<option value="all">All accounts</option>` +
+    state.accounts.map(a=>`<option value="${a.id}">${a.name}</option>`).join('');
+  sel.value = 'all';
+}
+
+const HISTORY_PAGE_SIZE = 50;
+
+function renderHistory(append){
+  if(!append){
+    renderHistoryAccountOptions();
+    renderHistoryCategoryOptions();
+  }
+  const f = state.historyFilters;
+  let rows = state.transactions.filter(t=>{
+    const d = t.occurred_at.slice(0,10);
+    if(d < f.start || d > f.end) return false;
+    if(f.type!=='all' && t.type!==f.type) return false;
+    if(f.account!=='all' && t.account_id!==f.account) return false;
+    if(f.category!=='all' && t.category_id!==f.category) return false;
+    return true;
+  }).sort((a,b)=> b.occurred_at.localeCompare(a.occurred_at));
+
+  const host = document.getElementById('histTableHost');
+  const loadMoreBtn = document.getElementById('histLoadMore');
+
+  if(rows.length===0){
+    host.innerHTML = `<div class="empty-state">No transactions match these filters.</div>`;
+    loadMoreBtn.style.display = 'none';
+    return;
+  }
+
+  const visibleCount = state.historyPage * HISTORY_PAGE_SIZE;
+  const visible = rows.slice(0, visibleCount);
+  const income = rows.reduce((s,t)=> s + (t.type==='income'?Number(t.amount):0), 0);
+  const expense = rows.reduce((s,t)=> s + (t.type==='expense'?Number(t.amount):0), 0);
+
+  host.innerHTML = `<div class="tx-table-wrap"><table class="tx-table"><thead><tr>
+    <th>Date</th><th>Type</th><th>Category</th><th>Amount</th><th>Account</th><th>By</th><th>Note</th><th></th>
+  </tr></thead><tbody>${visible.map(renderHistoryRow).join('')}</tbody></table></div>
+  <p style="color:var(--muted);font-size:11.5px;margin:8px 2px 0;">
+    Showing ${visible.length} of ${rows.length} · Income PKR ${fmt(income)} · Expense PKR ${fmt(expense)}
+  </p>`;
+
+  loadMoreBtn.style.display = visible.length < rows.length ? 'inline-block' : 'none';
+
+  host.querySelectorAll('button.del').forEach(btn=>{
+    btn.addEventListener('click', async (e)=>{
+      const tr = e.target.closest('tr');
+      if(!confirm('Delete this transaction?')) return;
+      const { error } = await sb.from('transactions').delete().eq('id', tr.dataset.id);
+      if(error){ toast('Delete failed: '+error.message); return; }
+      toast('Transaction deleted');
+      await refreshTransactions();
+      refreshActiveDataViews();
+    });
+  });
+  host.querySelectorAll('button.edit').forEach(btn=>{
+    btn.addEventListener('click', (e)=> openEditRow(e.target.closest('tr')));
+  });
+}
+
+function renderHistoryRow(t){
+  const cat = state.categories.find(c=>c.id===t.category_id);
+  const acc = state.accounts.find(a=>a.id===t.account_id);
+  const mem = state.members.find(m=>m.id===t.member_id);
+  const d = new Date(t.occurred_at);
+  const color = t.type==='income' ? 'var(--income)' : 'var(--expense)';
+  const sign = t.type==='income' ? '+' : '−';
+  return `<tr data-id="${t.id}">
+    <td>${d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'})}</td>
+    <td style="color:${color};text-transform:capitalize;">${t.type}</td>
+    <td>${cat?(cat.icon||CAT_ICONS[cat.name]||'📌')+' '+cat.name:'—'}</td>
+    <td style="color:${color};font-weight:600;">${sign} PKR ${fmt(t.amount)}</td>
+    <td>${acc?acc.name:'—'}</td>
+    <td>${mem?mem.name:'—'}</td>
+    <td>${t.note||''}</td>
+    <td class="rowbtns"><button class="edit">Edit</button><button class="del">Del</button></td>
+  </tr>`;
 }
 
 /* ============================================================
@@ -944,45 +1233,6 @@ function renderSetup(){
   renderCatSetup();
   renderAcctSetup();
   renderMemberSetup();
-
-  document.getElementById('addCatBtn').addEventListener('click', async ()=>{
-    const kind = document.getElementById('newCatKind').value;
-    const name = document.getElementById('newCatName').value.trim();
-    if(!name) return;
-    const existing = state.categories.filter(c=>c.kind===kind);
-    const maxOrder = existing.reduce((m,c)=>Math.max(m,c.sort_order||0),0);
-    const { error } = await sb.from('categories').insert({kind, name, sort_order: maxOrder+1});
-    if(error){ toast(error.message.includes('duplicate')?'That category already exists':error.message); return; }
-    document.getElementById('newCatName').value='';
-    await reloadReferenceData();
-    toast('Category added');
-  });
-
-  document.getElementById('addAcctBtn').addEventListener('click', async ()=>{
-    const name = document.getElementById('newAcctName').value.trim();
-    if(!name) return;
-    const maxOrder = state.accounts.reduce((m,a)=>Math.max(m,a.sort_order||0),0);
-    const { error } = await sb.from('accounts').insert({name, sort_order:maxOrder+1});
-    if(error){ toast(error.message.includes('duplicate')?'That account already exists':error.message); return; }
-    document.getElementById('newAcctName').value='';
-    await reloadReferenceData();
-    toast('Account added');
-  });
-
-  document.getElementById('addMemberBtn').addEventListener('click', async ()=>{
-    const name = document.getElementById('newMemberName').value.trim();
-    if(!name) return;
-    const maxOrder = state.members.reduce((m,x)=>Math.max(m,x.sort_order||0),0);
-    const { error } = await sb.from('members').insert({name, sort_order:maxOrder+1});
-    if(error){ toast(error.message.includes('duplicate')?'That member already exists':error.message); return; }
-    document.getElementById('newMemberName').value='';
-    await reloadReferenceData();
-    toast('Member added');
-  });
-
-  document.getElementById('exportBtn').addEventListener('click', exportBackup);
-  document.getElementById('importBtn').addEventListener('click', ()=>document.getElementById('importFile').click());
-  document.getElementById('importFile').addEventListener('change', importBackup);
 }
 
 async function reloadReferenceData(){
@@ -992,7 +1242,7 @@ async function reloadReferenceData(){
     sb.from('categories').select('*').order('sort_order'),
   ]);
   state.members = m.data||[]; state.accounts = a.data||[]; state.categories = c.data||[];
-  renderExpenseView(); renderIncomeView(); renderSetup(); renderDashboard();
+  renderExpenseView(); renderIncomeView(); renderSetup(); renderDashboard(); renderHistory();
 }
 
 function renderCatSetup(){
@@ -1060,7 +1310,7 @@ async function importBackup(e){
 
     toast('Import complete');
     await loadAllData();
-    renderExpenseView(); renderIncomeView(); renderSetup(); renderDashboard();
+    renderExpenseView(); renderIncomeView(); renderSetup(); renderDashboard(); renderHistory();
   }catch(err){
     toast('Import failed: invalid file');
   }
