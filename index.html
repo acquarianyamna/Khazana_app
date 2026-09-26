@@ -92,6 +92,13 @@
   .btn-primary:active{transform:scale(.985);}
   .btn-primary:disabled{opacity:.5;}
   .auth-error{color:var(--danger);font-size:13px;margin-top:10px;min-height:16px;}
+  .auth-note{color:var(--income);font-size:12.5px;margin-top:10px;line-height:1.5;}
+  .auth-tabs{display:flex;background:var(--surface-alt);border:1px solid var(--border);border-radius:11px;padding:3px;margin-bottom:22px;}
+  .auth-tabs .auth-tab{
+    flex:1;background:none;border:none;color:var(--muted);padding:9px 4px;
+    border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;
+  }
+  .auth-tabs .auth-tab.active{background:var(--gold);color:#20150A;}
 
   /* ---------- App shell ---------- */
   #mainScreen{display:flex;flex-direction:column;min-height:100vh;}
@@ -333,8 +340,14 @@
 <div id="authScreen">
   <div class="auth-card">
     <div class="auth-mark">🪙</div>
-    <h1>Khazana</h1>
-    <p class="sub">Sign in with your shared family login.</p>
+    <h1 id="authTitle">Khazana</h1>
+    <p class="sub" id="authSub">Sign in to your ledger.</p>
+
+    <div class="auth-tabs">
+      <button type="button" class="auth-tab active" data-mode="signin">Sign in</button>
+      <button type="button" class="auth-tab" data-mode="signup">Create account</button>
+    </div>
+
     <form id="loginForm">
       <div class="field">
         <label>Email</label>
@@ -342,10 +355,11 @@
       </div>
       <div class="field">
         <label>Password</label>
-        <input type="password" id="loginPassword" autocomplete="current-password" required>
+        <input type="password" id="loginPassword" autocomplete="current-password" required minlength="6">
       </div>
       <button type="submit" class="btn-primary" id="loginBtn">Sign in</button>
       <div class="auth-error" id="loginError"></div>
+      <div class="auth-note" id="authNote"></div>
     </form>
   </div>
 </div>
@@ -356,7 +370,10 @@
       <h2 id="pageTitle">Add Expense</h2>
       <span id="pageSub">Tap to build the amount</span>
     </div>
-    <button class="logout" id="logoutBtn">Sign out</button>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span id="whoAmI" style="color:var(--muted);font-size:11.5px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+      <button class="logout" id="logoutBtn">Sign out</button>
+    </div>
   </header>
 
   <main id="viewport">
@@ -602,16 +619,53 @@ function toast(msg){
 }
 
 /* ============================================================
-   AUTH
+   AUTH  (sign in / create account — each account's data is fully private)
    ============================================================ */
+let authMode = 'signin';
+
+document.querySelectorAll('.auth-tab').forEach(tab=>{
+  tab.addEventListener('click', ()=>{
+    document.querySelectorAll('.auth-tab').forEach(t=>t.classList.remove('active'));
+    tab.classList.add('active');
+    authMode = tab.dataset.mode;
+    document.getElementById('loginError').textContent = '';
+    document.getElementById('authNote').textContent = '';
+    if(authMode==='signup'){
+      document.getElementById('authSub').textContent = 'Create your own private ledger.';
+      document.getElementById('loginBtn').textContent = 'Create account';
+      document.getElementById('loginPassword').autocomplete = 'new-password';
+    } else {
+      document.getElementById('authSub').textContent = 'Sign in to your ledger.';
+      document.getElementById('loginBtn').textContent = 'Sign in';
+      document.getElementById('loginPassword').autocomplete = 'current-password';
+    }
+  });
+});
+
 document.getElementById('loginForm').addEventListener('submit', async (e)=>{
   e.preventDefault();
   const btn = document.getElementById('loginBtn');
   const errEl = document.getElementById('loginError');
-  errEl.textContent = '';
-  btn.disabled = true; btn.textContent = 'Signing in…';
+  const noteEl = document.getElementById('authNote');
+  errEl.textContent = ''; noteEl.textContent = '';
   const email = document.getElementById('loginEmail').value.trim();
   const password = document.getElementById('loginPassword').value;
+
+  if(authMode==='signup'){
+    btn.disabled = true; btn.textContent = 'Creating account…';
+    const { data, error } = await sb.auth.signUp({ email, password });
+    btn.disabled = false; btn.textContent = 'Create account';
+    if(error){ errEl.textContent = error.message; return; }
+    if(data.session){
+      await enterApp(); // email confirmation is off — straight in, with fresh default categories/accounts
+    } else {
+      noteEl.textContent = 'Account created — check your email to confirm it, then sign in above.';
+      document.querySelector('.auth-tab[data-mode="signin"]').click();
+    }
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = 'Signing in…';
   const { error } = await sb.auth.signInWithPassword({ email, password });
   btn.disabled = false; btn.textContent = 'Sign in';
   if(error){ errEl.textContent = error.message; return; }
@@ -632,6 +686,8 @@ async function checkSession(){
 async function enterApp(){
   document.getElementById('authScreen').classList.add('hidden');
   document.getElementById('mainScreen').classList.remove('hidden');
+  const { data: userData } = await sb.auth.getUser();
+  document.getElementById('whoAmI').textContent = userData?.user?.email || '';
   await loadAllData();
   buildDenoms();
   wireStaticButtons();
