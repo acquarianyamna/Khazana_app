@@ -181,6 +181,7 @@
   }
   .save-btn.expense{background:var(--expense);color:#22140B;}
   .save-btn.income{background:var(--income);color:#0B221D;}
+  .save-btn.transfer{background:var(--gold);color:#20150A;}
   .save-btn:disabled{opacity:.4;}
 
   /* ---------- Toast ---------- */
@@ -317,6 +318,10 @@
     /* App is intentionally dark-only for now — financial data, low-light usage at fuel pumps/shops */
   }
 
+  @media(max-width:400px){
+    nav#bottomNav button{font-size:9.5px;}
+    nav#bottomNav button .ic{font-size:16px;}
+  }
   @media(max-width:360px){
     .amount-display .val{font-size:36px;}
     .denoms button{font-size:13px;padding:12px 3px;}
@@ -414,6 +419,36 @@
       <button class="save-btn income" id="incSaveBtn" disabled>Save income</button>
     </section>
 
+    <!-- TRANSFER -->
+    <section class="view hidden" id="view-transfer">
+      <div class="amount-display">
+        <div class="pad-actions">
+          <button id="trfUndo" title="Undo last tap">⌫</button>
+          <button id="trfClear" title="Clear">✕</button>
+        </div>
+        <div class="cur">PKR</div>
+        <div class="val empty" id="trfAmountVal">0</div>
+        <div class="amount-taps" id="trfTapsHint"></div>
+      </div>
+      <div class="denoms" id="trfDenoms"></div>
+
+      <div class="section-label">From account</div>
+      <div class="chip-row" id="trfFromGrid"></div>
+
+      <div class="section-label">To account</div>
+      <div class="chip-row" id="trfToGrid"></div>
+      <p id="trfSameWarn" class="hidden" style="color:var(--danger);font-size:12.5px;margin:-10px 0 16px;">From and To accounts must be different.</p>
+
+      <div class="section-label">Added by</div>
+      <div class="chip-row" id="trfMemberGrid"></div>
+
+      <div class="note-field">
+        <input type="text" id="trfNote" placeholder="Note (optional) — e.g. moved for bike fuel">
+      </div>
+
+      <button class="save-btn transfer" id="trfSaveBtn" disabled>Save transfer</button>
+    </section>
+
     <!-- DASHBOARD -->
     <section class="view hidden" id="view-dashboard">
       <div class="date-range">
@@ -427,6 +462,7 @@
         <div class="card out"><div class="lbl">Expense (period)</div><div class="fig" id="sumExpense">0</div></div>
         <div class="card"><div class="lbl">Net (period)</div><div class="fig" id="sumNet">0</div></div>
       </div>
+      <p id="sumTransfers" style="color:var(--muted);font-size:12px;margin:-10px 0 20px;"></p>
 
       <h3 class="dh">Account balances <span class="tag">all-time — tap one for its ledger</span></h3>
       <div class="acct-list" id="acctList"></div>
@@ -454,6 +490,7 @@
         <button data-type="all" class="h-type-btn on">All</button>
         <button data-type="income" class="h-type-btn">Income</button>
         <button data-type="expense" class="h-type-btn">Expense</button>
+        <button data-type="transfer" class="h-type-btn">Transfer</button>
       </div>
       <div class="setup-add" style="margin-bottom:16px;">
         <select id="histAccount"><option value="all">All accounts</option></select>
@@ -511,6 +548,7 @@
   <nav id="bottomNav">
     <button data-view="expense" class="active"><span class="ic">➖</span>Expense</button>
     <button data-view="income"><span class="ic">➕</span>Income</button>
+    <button data-view="transfer"><span class="ic">🔁</span>Transfer</button>
     <button data-view="dashboard"><span class="ic">📊</span>Dashboard</button>
     <button data-view="history"><span class="ic">📜</span>History</button>
     <button data-view="setup"><span class="ic">⚙️</span>Setup</button>
@@ -541,9 +579,10 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const state = {
   members: [], accounts: [], categories: [],
   transactions: [],
-  expTaps: [], incTaps: [],
+  expTaps: [], incTaps: [], trfTaps: [],
   expSel: {category:null, account:null, member:null},
   incSel: {category:null, account:null, member:null},
+  trfSel: {from:null, to:null, member:null},
   dashStart: null, dashEnd: null,
   openCat: {expense:null, income:null},
   openAccount: null,
@@ -598,6 +637,7 @@ async function enterApp(){
   wireStaticButtons();
   renderExpenseView();
   renderIncomeView();
+  renderTransferView();
   setupDashboardDefaults();
   renderDashboard();
   renderSetup();
@@ -629,31 +669,31 @@ async function refreshTransactions(){
 /* ============================================================
    AMOUNT PAD
    ============================================================ */
-function buildDenoms(){
-  document.getElementById('expDenoms').innerHTML = DENOMS.map(d=>`<button data-d="${d}">${d>=1000? (d/1000)+'k':d}</button>`).join('');
-  document.getElementById('incDenoms').innerHTML = DENOMS.map(d=>`<button data-d="${d}">${d>=1000? (d/1000)+'k':d}</button>`).join('');
+const PAD_IDS = {
+  exp: {denoms:'expDenoms', undo:'expUndo', clear:'expClear', val:'expAmountVal', hint:'expTapsHint', taps:'expTaps'},
+  inc: {denoms:'incDenoms', undo:'incUndo', clear:'incClear', val:'incAmountVal', hint:'incTapsHint', taps:'incTaps'},
+  trf: {denoms:'trfDenoms', undo:'trfUndo', clear:'trfClear', val:'trfAmountVal', hint:'trfTapsHint', taps:'trfTaps'}
+};
 
-  document.getElementById('expDenoms').addEventListener('click', e=>{
-    const b = e.target.closest('button'); if(!b) return;
-    state.expTaps.push(Number(b.dataset.d));
-    renderAmount('exp');
+function buildDenoms(){
+  Object.entries(PAD_IDS).forEach(([kind, ids])=>{
+    document.getElementById(ids.denoms).innerHTML = DENOMS.map(d=>`<button data-d="${d}">${d>=1000? (d/1000)+'k':d}</button>`).join('');
+    document.getElementById(ids.denoms).addEventListener('click', e=>{
+      const b = e.target.closest('button'); if(!b) return;
+      state[ids.taps].push(Number(b.dataset.d));
+      renderAmount(kind);
+    });
+    document.getElementById(ids.undo).addEventListener('click', ()=>{ state[ids.taps].pop(); renderAmount(kind); });
+    document.getElementById(ids.clear).addEventListener('click', ()=>{ state[ids.taps]=[]; renderAmount(kind); });
   });
-  document.getElementById('incDenoms').addEventListener('click', e=>{
-    const b = e.target.closest('button'); if(!b) return;
-    state.incTaps.push(Number(b.dataset.d));
-    renderAmount('inc');
-  });
-  document.getElementById('expUndo').addEventListener('click', ()=>{ state.expTaps.pop(); renderAmount('exp'); });
-  document.getElementById('expClear').addEventListener('click', ()=>{ state.expTaps=[]; renderAmount('exp'); });
-  document.getElementById('incUndo').addEventListener('click', ()=>{ state.incTaps.pop(); renderAmount('inc'); });
-  document.getElementById('incClear').addEventListener('click', ()=>{ state.incTaps=[]; renderAmount('inc'); });
 }
 
 function renderAmount(kind){
-  const taps = kind==='exp' ? state.expTaps : state.incTaps;
+  const ids = PAD_IDS[kind];
+  const taps = state[ids.taps];
   const total = taps.reduce((a,b)=>a+b,0);
-  const valEl = document.getElementById(kind==='exp'?'expAmountVal':'incAmountVal');
-  const hintEl = document.getElementById(kind==='exp'?'expTapsHint':'incTapsHint');
+  const valEl = document.getElementById(ids.val);
+  const hintEl = document.getElementById(ids.hint);
   valEl.textContent = fmt(total);
   valEl.classList.toggle('empty', total===0);
   hintEl.textContent = taps.length ? taps.slice().sort((a,b)=>b-a).map(t=>t>=1000?(t/1000)+'k':t).join(' + ') : '';
@@ -699,6 +739,48 @@ function wireOnce(el, event, handler){
   el.addEventListener(event, handler);
 }
 
+function renderTransferView(){
+  const accounts = state.accounts.filter(a=>a.is_active);
+  const opt = a => `<button class="chip" data-id="${a.id}"><span class="ic">${ACC_ICONS[a.name]||'💳'}</span>${a.name}</button>`;
+  document.getElementById('trfFromGrid').innerHTML = accounts.map(opt).join('');
+  document.getElementById('trfToGrid').innerHTML = accounts.map(opt).join('');
+  document.getElementById('trfMemberGrid').innerHTML = state.members.filter(m=>m.is_active).map(m=>
+    `<button class="chip" data-id="${m.id}"><span class="ic">🙂</span>${m.name}</button>`).join('');
+
+  wireSelectGrid('trfFromGrid', id=>{ state.trfSel.from=id; updateSaveState('trf'); });
+  wireSelectGrid('trfToGrid', id=>{ state.trfSel.to=id; updateSaveState('trf'); });
+  wireSelectGrid('trfMemberGrid', id=>{ state.trfSel.member=id; updateSaveState('trf'); });
+}
+
+async function saveTransfer(){
+  const total = state.trfTaps.reduce((a,b)=>a+b,0);
+  const sel = state.trfSel;
+  const note = document.getElementById('trfNote').value.trim();
+  const btn = document.getElementById('trfSaveBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+
+  const { error } = await sb.from('transactions').insert({
+    type:'transfer', amount: total, account_id: sel.from, to_account_id: sel.to,
+    member_id: sel.member, note: note || null
+  });
+
+  btn.textContent = 'Save transfer';
+  if(error){ toast('Could not save: '+error.message); btn.disabled=false; return; }
+
+  const fromName = state.accounts.find(a=>a.id===sel.from)?.name || '';
+  const toName = state.accounts.find(a=>a.id===sel.to)?.name || '';
+  toast(`Transferred PKR ${fmt(total)}: ${fromName} → ${toName}`);
+
+  state.trfTaps=[]; state.trfSel={from:null,to:null,member:null};
+  document.getElementById('trfNote').value='';
+  document.querySelectorAll('#trfFromGrid .chip, #trfToGrid .chip, #trfMemberGrid .chip').forEach(c=>c.classList.remove('sel'));
+  renderAmount('trf');
+  updateSaveState('trf');
+
+  await refreshTransactions();
+  refreshActiveDataViews();
+}
+
 function wireSelectGrid(gridId, onSelect){
   const grid = document.getElementById(gridId);
   wireOnce(grid, 'click', e=>{
@@ -710,6 +792,15 @@ function wireSelectGrid(gridId, onSelect){
 }
 
 function updateSaveState(kind){
+  if(kind==='trf'){
+    const total = state.trfTaps.reduce((a,b)=>a+b,0);
+    const sel = state.trfSel;
+    const sameAccount = !!(sel.from && sel.to && sel.from===sel.to);
+    document.getElementById('trfSameWarn').classList.toggle('hidden', !sameAccount);
+    const ok = total>0 && sel.from && sel.to && !sameAccount && sel.member;
+    document.getElementById('trfSaveBtn').disabled = !ok;
+    return;
+  }
   const taps = kind==='exp'?state.expTaps:state.incTaps;
   const sel = kind==='exp'?state.expSel:state.incSel;
   const total = taps.reduce((a,b)=>a+b,0);
@@ -752,6 +843,7 @@ async function saveTransaction(type){
 function wireStaticButtons(){
   document.getElementById('expSaveBtn').addEventListener('click', ()=>saveTransaction('expense'));
   document.getElementById('incSaveBtn').addEventListener('click', ()=>saveTransaction('income'));
+  document.getElementById('trfSaveBtn').addEventListener('click', saveTransfer);
 
   document.getElementById('addCatBtn').addEventListener('click', async ()=>{
     const kind = document.getElementById('newCatKind').value;
@@ -804,6 +896,7 @@ document.getElementById('bottomNav').addEventListener('click', e=>{
   document.querySelectorAll('main .view').forEach(v=>v.classList.add('hidden'));
   document.getElementById('view-'+view).classList.remove('hidden');
   const titles = {expense:['Add Expense','Tap to build the amount'], income:['Add Income','Tap to build the amount'],
+    transfer:['Transfer Money','Move funds between your accounts'],
     dashboard:['Dashboard','Balances & category totals'], history:['All Transactions','Every entry, filterable'],
     setup:['Setup','Categories, accounts & members']};
   document.getElementById('pageTitle').textContent = titles[view][0];
@@ -857,11 +950,19 @@ function renderDashboard(){
   netEl.textContent = fmt(totalIncome-totalExpense);
   netEl.style.color = (totalIncome-totalExpense)>=0 ? 'var(--income)' : 'var(--danger)';
 
+  const transfers = filtered.filter(t=>t.type==='transfer');
+  const transferTotal = transfers.reduce((s,t)=>s+Number(t.amount),0);
+  document.getElementById('sumTransfers').textContent = transfers.length
+    ? `🔁 ${transfers.length} transfer${transfers.length!==1?'s':''} between your own accounts this period · PKR ${fmt(transferTotal)} (not counted as income or expense)`
+    : '';
+
   // Account balances (all-time, but tap a row to see that account's transactions in the selected period)
   const accHtml = state.accounts.filter(a=>a.is_active).map(a=>{
     const inc = state.transactions.filter(t=>t.account_id===a.id && t.type==='income').reduce((s,t)=>s+Number(t.amount),0);
     const exp = state.transactions.filter(t=>t.account_id===a.id && t.type==='expense').reduce((s,t)=>s+Number(t.amount),0);
-    const bal = inc-exp;
+    const trfOut = state.transactions.filter(t=>t.account_id===a.id && t.type==='transfer').reduce((s,t)=>s+Number(t.amount),0);
+    const trfIn = state.transactions.filter(t=>t.to_account_id===a.id && t.type==='transfer').reduce((s,t)=>s+Number(t.amount),0);
+    const bal = inc-exp-trfOut+trfIn;
     return `<div class="acct-row" data-acc="${a.id}" style="cursor:pointer;"><div class="nm">${ACC_ICONS[a.name]||'💳'} ${a.name}</div><div class="bal ${bal<0?'neg':''}">PKR ${fmt(bal)}</div></div>`;
   }).join('');
   const allInc = state.transactions.filter(t=>t.type==='income').reduce((s,t)=>s+Number(t.amount),0);
@@ -1000,36 +1101,70 @@ function openEditRow(tr){
   const id = tr.dataset.id;
   const t = state.transactions.find(x=>x.id===id);
   if(!t) return;
-  const kind = t.type;
+  const isTransfer = t.type==='transfer';
   const colCount = tr.children.length;
-  const cats = state.categories.filter(c=>c.kind===kind && c.is_active);
-  const catOpts = cats.map(c=>`<option value="${c.id}" ${c.id===t.category_id?'selected':''}>${c.name}</option>`).join('');
-  const accOpts = state.accounts.filter(a=>a.is_active).map(a=>`<option value="${a.id}" ${a.id===t.account_id?'selected':''}>${a.name}</option>`).join('');
   const memOpts = state.members.filter(m=>m.is_active).map(m=>`<option value="${m.id}" ${m.id===t.member_id?'selected':''}>${m.name}</option>`).join('');
+  const dateVal = t.occurred_at.slice(0,10);
+  const btnHtml = `
+    <button class="e-save" style="background:var(--gold);color:#20150A;border:none;border-radius:7px;padding:6px 10px;font-size:11px;cursor:pointer;">Save</button>
+    <button class="e-cancel" style="background:var(--surface-alt);border:1px solid var(--border);color:var(--muted);border-radius:7px;padding:6px 10px;font-size:11px;cursor:pointer;">Cancel</button>`;
+
+  let fieldsHtml;
+  if(isTransfer){
+    const accOptsFrom = state.accounts.filter(a=>a.is_active).map(a=>`<option value="${a.id}" ${a.id===t.account_id?'selected':''}>${a.name}</option>`).join('');
+    const accOptsTo = state.accounts.filter(a=>a.is_active).map(a=>`<option value="${a.id}" ${a.id===t.to_account_id?'selected':''}>${a.name}</option>`).join('');
+    fieldsHtml = `
+      <input type="number" class="e-amt" value="${t.amount}" style="width:90px;">
+      <select class="e-acc-from">${accOptsFrom}</select>
+      <span style="color:var(--muted);">→</span>
+      <select class="e-acc-to">${accOptsTo}</select>
+      <select class="e-mem">${memOpts}</select>
+      <input type="text" class="e-note" value="${t.note||''}" placeholder="Note" style="width:110px;">
+      <input type="date" class="e-date" value="${dateVal}">`;
+  } else {
+    const kind = t.type;
+    const cats = state.categories.filter(c=>c.kind===kind && c.is_active);
+    const catOpts = cats.map(c=>`<option value="${c.id}" ${c.id===t.category_id?'selected':''}>${c.name}</option>`).join('');
+    const accOpts = state.accounts.filter(a=>a.is_active).map(a=>`<option value="${a.id}" ${a.id===t.account_id?'selected':''}>${a.name}</option>`).join('');
+    fieldsHtml = `
+      <input type="number" class="e-amt" value="${t.amount}" style="width:90px;">
+      <select class="e-cat">${catOpts}</select>
+      <select class="e-acc">${accOpts}</select>
+      <select class="e-mem">${memOpts}</select>
+      <input type="text" class="e-note" value="${t.note||''}" placeholder="Note" style="width:110px;">
+      <input type="date" class="e-date" value="${dateVal}">`;
+  }
+
   tr.innerHTML = `
     <td colspan="${colCount}">
       <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:4px 0;">
-        <input type="number" class="e-amt" value="${t.amount}" style="width:90px;">
-        <select class="e-cat">${catOpts}</select>
-        <select class="e-acc">${accOpts}</select>
-        <select class="e-mem">${memOpts}</select>
-        <input type="text" class="e-note" value="${t.note||''}" placeholder="Note" style="width:110px;">
-        <input type="date" class="e-date" value="${t.occurred_at.slice(0,10)}">
-        <button class="e-save" style="background:var(--gold);color:#20150A;border:none;border-radius:7px;padding:6px 10px;font-size:11px;cursor:pointer;">Save</button>
-        <button class="e-cancel" style="background:var(--surface-alt);border:1px solid var(--border);color:var(--muted);border-radius:7px;padding:6px 10px;font-size:11px;cursor:pointer;">Cancel</button>
+        ${fieldsHtml}
+        ${btnHtml}
       </div>
     </td>`;
+
   tr.querySelector('.e-cancel').addEventListener('click', ()=> refreshActiveDataViews());
   tr.querySelector('.e-save').addEventListener('click', async ()=>{
     const amount = Number(tr.querySelector('.e-amt').value);
-    const category_id = tr.querySelector('.e-cat').value;
-    const account_id = tr.querySelector('.e-acc').value;
     const member_id = tr.querySelector('.e-mem').value;
     const note = tr.querySelector('.e-note').value.trim() || null;
-    const dateVal = tr.querySelector('.e-date').value;
-    const occurred_at = new Date(dateVal + 'T' + new Date(t.occurred_at).toTimeString().slice(0,8)).toISOString();
+    const dateVal2 = tr.querySelector('.e-date').value;
+    const occurred_at = new Date(dateVal2 + 'T' + new Date(t.occurred_at).toTimeString().slice(0,8)).toISOString();
     if(!amount || amount<=0){ toast('Enter a valid amount'); return; }
-    const { error } = await sb.from('transactions').update({amount, category_id, account_id, member_id, note, occurred_at}).eq('id', id);
+
+    let payload;
+    if(isTransfer){
+      const account_id = tr.querySelector('.e-acc-from').value;
+      const to_account_id = tr.querySelector('.e-acc-to').value;
+      if(account_id===to_account_id){ toast('From and To accounts must be different'); return; }
+      payload = {amount, account_id, to_account_id, member_id, note, occurred_at};
+    } else {
+      const category_id = tr.querySelector('.e-cat').value;
+      const account_id = tr.querySelector('.e-acc').value;
+      payload = {amount, category_id, account_id, member_id, note, occurred_at};
+    }
+
+    const { error } = await sb.from('transactions').update(payload).eq('id', id);
     if(error){ toast('Update failed: '+error.message); return; }
     toast('Transaction updated');
     await refreshTransactions();
@@ -1044,16 +1179,26 @@ function refreshActiveDataViews(){
   if(!document.getElementById('view-history').classList.contains('hidden')) renderHistory();
 }
 
-function renderAccountTxRow(t){
+function renderAccountTxRow(t, accId){
   const cat = state.categories.find(c=>c.id===t.category_id);
   const mem = state.members.find(m=>m.id===t.member_id);
   const d = new Date(t.occurred_at);
-  const sign = t.type==='income' ? '+' : '−';
-  const color = t.type==='income' ? 'var(--income)' : 'var(--expense)';
+  let sign, color, catLabel;
+  if(t.type==='transfer'){
+    const outgoing = t.account_id===accId;
+    const other = state.accounts.find(a=>a.id === (outgoing ? t.to_account_id : t.account_id));
+    sign = outgoing ? '−' : '+';
+    color = 'var(--gold)';
+    catLabel = `🔁 ${outgoing ? 'to '+(other?other.name:'—') : 'from '+(other?other.name:'—')}`;
+  } else {
+    sign = t.type==='income' ? '+' : '−';
+    color = t.type==='income' ? 'var(--income)' : 'var(--expense)';
+    catLabel = cat?(cat.icon||CAT_ICONS[cat.name]||'📌')+' '+cat.name:'—';
+  }
   return `<tr data-id="${t.id}">
     <td>${d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})}</td>
     <td style="color:${color};font-weight:600;">${sign} PKR ${fmt(t.amount)}</td>
-    <td>${cat?(cat.icon||CAT_ICONS[cat.name]||'📌')+' '+cat.name:'—'}</td>
+    <td>${catLabel}</td>
     <td>${mem?mem.name:'—'}</td>
     <td>${t.note||''}</td>
     <td class="rowbtns"><button class="edit">Edit</button><button class="del">Del</button></td>
@@ -1063,14 +1208,14 @@ function renderAccountTxRow(t){
 function renderAccountTxTable(accId, filtered, hostEl, show){
   if(!show){ hostEl.innerHTML=''; return; }
   const acc = state.accounts.find(a=>a.id===accId);
-  const rows = filtered.filter(t=>t.account_id===accId).sort((a,b)=> b.occurred_at.localeCompare(a.occurred_at));
+  const rows = filtered.filter(t=>t.account_id===accId || t.to_account_id===accId).sort((a,b)=> b.occurred_at.localeCompare(a.occurred_at));
   if(rows.length===0){
     hostEl.innerHTML = `<div class="empty-state">No transactions on ${acc?acc.name:'this account'} in the selected period.</div>`;
     return;
   }
   hostEl.innerHTML = `<div class="tx-table-wrap"><table class="tx-table"><thead><tr>
     <th>Date</th><th>Amount</th><th>Category</th><th>By</th><th>Note</th><th></th>
-  </tr></thead><tbody>${rows.map(renderAccountTxRow).join('')}</tbody></table></div>
+  </tr></thead><tbody>${rows.map(t=>renderAccountTxRow(t, accId)).join('')}</tbody></table></div>
   <p style="color:var(--muted);font-size:11.5px;margin:8px 2px 0;">${rows.length} transaction${rows.length!==1?'s':''} on ${acc?acc.name:''} in the selected period</p>`;
 
   hostEl.querySelectorAll('button.del').forEach(btn=>{
@@ -1138,6 +1283,13 @@ function setupHistoryDefaults(){
 function renderHistoryCategoryOptions(){
   const sel = document.getElementById('histCategory');
   const f = state.historyFilters;
+  if(f.type==='transfer'){
+    sel.innerHTML = `<option value="all">Not applicable</option>`;
+    sel.value = 'all';
+    sel.disabled = true;
+    return;
+  }
+  sel.disabled = false;
   const cats = f.type==='all' ? state.categories : state.categories.filter(c=>c.kind===f.type);
   sel.innerHTML = `<option value="all">All categories</option>` +
     cats.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
@@ -1163,7 +1315,7 @@ function renderHistory(append){
     const d = t.occurred_at.slice(0,10);
     if(d < f.start || d > f.end) return false;
     if(f.type!=='all' && t.type!==f.type) return false;
-    if(f.account!=='all' && t.account_id!==f.account) return false;
+    if(f.account!=='all' && !(t.account_id===f.account || t.to_account_id===f.account)) return false;
     if(f.category!=='all' && t.category_id!==f.category) return false;
     return true;
   }).sort((a,b)=> b.occurred_at.localeCompare(a.occurred_at));
@@ -1210,16 +1362,20 @@ function renderHistory(append){
 function renderHistoryRow(t){
   const cat = state.categories.find(c=>c.id===t.category_id);
   const acc = state.accounts.find(a=>a.id===t.account_id);
+  const toAcc = state.accounts.find(a=>a.id===t.to_account_id);
   const mem = state.members.find(m=>m.id===t.member_id);
   const d = new Date(t.occurred_at);
-  const color = t.type==='income' ? 'var(--income)' : 'var(--expense)';
-  const sign = t.type==='income' ? '+' : '−';
+  const isTransfer = t.type==='transfer';
+  const color = isTransfer ? 'var(--gold)' : (t.type==='income' ? 'var(--income)' : 'var(--expense)');
+  const sign = isTransfer ? '' : (t.type==='income' ? '+' : '−');
+  const catLabel = isTransfer ? '🔁 Transfer' : (cat?(cat.icon||CAT_ICONS[cat.name]||'📌')+' '+cat.name:'—');
+  const accLabel = isTransfer ? `${acc?acc.name:'—'} → ${toAcc?toAcc.name:'—'}` : (acc?acc.name:'—');
   return `<tr data-id="${t.id}">
     <td>${d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'})}</td>
     <td style="color:${color};text-transform:capitalize;">${t.type}</td>
-    <td>${cat?(cat.icon||CAT_ICONS[cat.name]||'📌')+' '+cat.name:'—'}</td>
+    <td>${catLabel}</td>
     <td style="color:${color};font-weight:600;">${sign} PKR ${fmt(t.amount)}</td>
-    <td>${acc?acc.name:'—'}</td>
+    <td>${accLabel}</td>
     <td>${mem?mem.name:'—'}</td>
     <td>${t.note||''}</td>
     <td class="rowbtns"><button class="edit">Edit</button><button class="del">Del</button></td>
@@ -1242,7 +1398,7 @@ async function reloadReferenceData(){
     sb.from('categories').select('*').order('sort_order'),
   ]);
   state.members = m.data||[]; state.accounts = a.data||[]; state.categories = c.data||[];
-  renderExpenseView(); renderIncomeView(); renderSetup(); renderDashboard(); renderHistory();
+  renderExpenseView(); renderIncomeView(); renderTransferView(); renderSetup(); renderDashboard(); renderHistory();
 }
 
 function renderCatSetup(){
@@ -1310,7 +1466,7 @@ async function importBackup(e){
 
     toast('Import complete');
     await loadAllData();
-    renderExpenseView(); renderIncomeView(); renderSetup(); renderDashboard(); renderHistory();
+    renderExpenseView(); renderIncomeView(); renderTransferView(); renderSetup(); renderDashboard(); renderHistory();
   }catch(err){
     toast('Import failed: invalid file');
   }
