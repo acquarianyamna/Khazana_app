@@ -400,6 +400,18 @@
       <div class="section-label">Added by</div>
       <div class="chip-row" id="expMemberGrid"></div>
 
+      <div class="section-label">Funded from</div>
+      <div class="chip-row">
+        <button type="button" class="chip sel" id="expFundPersonal"><span class="ic">💰</span>My own money</button>
+        <button type="button" class="chip" id="expFundPassthrough"><span class="ic">🤝</span>Pass-through funds</button>
+      </div>
+      <p id="expFundHint" style="color:var(--muted);font-size:11.5px;margin:-10px 0 16px;">e.g. money you're holding for someone else, like collected BC — won't count against your own usable balance.</p>
+
+      <div class="section-label">Date</div>
+      <div class="note-field">
+        <input type="date" id="expDate">
+      </div>
+
       <div class="note-field">
         <input type="text" id="expNote" placeholder="Note (optional) — e.g. biryani for guests">
       </div>
@@ -428,6 +440,11 @@
 
       <div class="section-label">Added by</div>
       <div class="chip-row" id="incMemberGrid"></div>
+
+      <div class="section-label">Date</div>
+      <div class="note-field">
+        <input type="date" id="incDate">
+      </div>
 
       <div class="note-field">
         <input type="text" id="incNote" placeholder="Note (optional)">
@@ -459,6 +476,11 @@
       <div class="section-label">Added by</div>
       <div class="chip-row" id="trfMemberGrid"></div>
 
+      <div class="section-label">Date</div>
+      <div class="note-field">
+        <input type="date" id="trfDate">
+      </div>
+
       <div class="note-field">
         <input type="text" id="trfNote" placeholder="Note (optional) — e.g. moved for bike fuel">
       </div>
@@ -468,32 +490,83 @@
 
     <!-- DASHBOARD -->
     <section class="view hidden" id="view-dashboard">
-      <div class="date-range">
-        <input type="date" id="dashStart">
-        <input type="date" id="dashEnd">
+      <div class="auth-tabs" style="margin-bottom:18px;">
+        <button type="button" class="auth-tab active" id="dashTabOverview">Overview</button>
+        <button type="button" class="auth-tab" id="dashTabBudget">Budget Plan</button>
       </div>
-      <div class="quick-row" id="dashQuick"></div>
 
-      <div class="summary-strip">
-        <div class="card in"><div class="lbl">Income (period)</div><div class="fig" id="sumIncome">0</div></div>
-        <div class="card out"><div class="lbl">Expense (period)</div><div class="fig" id="sumExpense">0</div></div>
-        <div class="card"><div class="lbl">Net (period)</div><div class="fig" id="sumNet">0</div></div>
+      <div id="dashOverview">
+        <div class="date-range">
+          <input type="date" id="dashStart">
+          <input type="date" id="dashEnd">
+        </div>
+        <div class="quick-row" id="dashQuick"></div>
+
+        <div class="summary-strip">
+          <div class="card in"><div class="lbl">Income (period)</div><div class="fig" id="sumIncome">0</div></div>
+          <div class="card out"><div class="lbl">Expense (period)</div><div class="fig" id="sumExpense">0</div></div>
+          <div class="card"><div class="lbl">Net (period)</div><div class="fig" id="sumNet">0</div></div>
+        </div>
+        <p id="sumTransfers" style="color:var(--muted);font-size:12px;margin:-10px 0 20px;"></p>
+
+        <h3 class="dh">Usable money <span class="tag">all-time — what's actually yours to spend</span></h3>
+        <div class="acct-list">
+          <div class="acct-row"><div class="nm">💰 My usable balance</div><div class="bal" id="usablePersonalBal">PKR 0</div></div>
+          <div class="acct-row"><div class="nm">🤝 Pass-through funds held</div><div class="bal" id="usablePassthroughBal">PKR 0</div></div>
+        </div>
+        <p id="passthroughWarn" class="hidden" style="color:var(--danger);font-size:12px;margin:10px 2px 0;"></p>
+
+        <h3 class="dh">Account balances <span class="tag">all-time — tap one for its ledger</span></h3>
+        <div class="acct-list" id="acctList"></div>
+        <div id="acctTxTableHost"></div>
+
+        <div id="expenseDonutWrap"></div>
+
+        <h3 class="dh">Expense by category</h3>
+        <div class="cat-list" id="expCatList"></div>
+        <div id="expTxTableHost"></div>
+
+        <h3 class="dh">Income by source</h3>
+        <div class="cat-list" id="incCatList"></div>
+        <div id="incTxTableHost"></div>
       </div>
-      <p id="sumTransfers" style="color:var(--muted);font-size:12px;margin:-10px 0 20px;"></p>
 
-      <h3 class="dh">Account balances <span class="tag">all-time — tap one for its ledger</span></h3>
-      <div class="acct-list" id="acctList"></div>
-      <div id="acctTxTableHost"></div>
+      <div id="dashBudget" class="hidden">
+        <div class="date-range">
+          <button class="quick" id="budgetPrevMonth">◀</button>
+          <div style="flex:1;text-align:center;font-weight:600;font-size:15px;" id="budgetMonthLabel"></div>
+          <button class="quick" id="budgetNextMonth">▶</button>
+        </div>
 
-      <div id="expenseDonutWrap"></div>
+        <div class="summary-strip">
+          <div class="card in"><div class="lbl">Planned income (mine)</div><div class="fig" id="bgPlannedIncome">0</div></div>
+          <div class="card out"><div class="lbl">Planned fixed expenses</div><div class="fig" id="bgPlannedFixed">0</div></div>
+          <div class="card"><div class="lbl">Projected usable</div><div class="fig" id="bgProjected">0</div></div>
+        </div>
 
-      <h3 class="dh">Expense by category</h3>
-      <div class="cat-list" id="expCatList"></div>
-      <div id="expTxTableHost"></div>
+        <h3 class="dh">Planned income <span class="tag">tap ✕ to remove</span></h3>
+        <div id="bgIncomeList" class="cat-list"></div>
+        <div class="setup-add" style="margin-top:10px;">
+          <select id="bgNewIncomeCat"></select>
+          <input type="number" id="bgNewIncomeAmt" placeholder="Amount" style="width:90px;">
+          <button id="bgAddIncomeBtn">Add</button>
+        </div>
 
-      <h3 class="dh">Income by source</h3>
-      <div class="cat-list" id="incCatList"></div>
-      <div id="incTxTableHost"></div>
+        <h3 class="dh">Fixed expenses <span class="tag">rent, bills, commitments</span></h3>
+        <div id="bgFixedList" class="cat-list"></div>
+        <div class="setup-add" style="margin-top:10px;">
+          <select id="bgNewFixedCat"></select>
+          <input type="number" id="bgNewFixedAmt" placeholder="Amount" style="width:90px;">
+          <button id="bgAddFixedBtn">Add</button>
+        </div>
+
+        <h3 class="dh">Actual so far this month</h3>
+        <div class="acct-list">
+          <div class="acct-row"><div class="nm">Income received (mine)</div><div class="bal" id="bgActualIncome">PKR 0</div></div>
+          <div class="acct-row"><div class="nm">Fixed-category spending</div><div class="bal" id="bgActualFixed">PKR 0</div></div>
+        </div>
+        <p style="color:var(--muted);font-size:11.5px;margin:10px 2px 24px;">"Fixed-category spending" totals actual expenses logged this month in any category you've planned a fixed expense for — a quick check against your plan.</p>
+      </div>
     </section>
 
     <!-- HISTORY -->
@@ -522,7 +595,16 @@
     <!-- SETUP -->
     <section class="view hidden" id="view-setup">
       <div class="setup-block">
+        <h4>Billing cycle</h4>
+        <p style="color:var(--muted);font-size:12.5px;margin:0 0 12px;">If your "month" runs on a custom schedule — e.g. salary on the 25th, so you track 25th-to-25th instead of 1st-to-1st — set that day here. The Dashboard's "This cycle" / "Last cycle" filters will use it.</p>
+        <div class="setup-add">
+          <select id="cycleStartDay"></select>
+        </div>
+      </div>
+
+      <div class="setup-block">
         <h4>Categories</h4>
+        <p style="color:var(--muted);font-size:12px;margin:0 0 10px;">For income categories, tick "pass-through" for money that isn't really yours — e.g. BC amounts you collect and must hand over. Expenses you mark as "pass-through funds" when logging them will come out of that pool instead of your own usable balance.</p>
         <div class="setup-add">
           <select id="newCatKind"><option value="expense">Expense</option><option value="income">Income</option></select>
           <input type="text" id="newCatName" placeholder="New category name">
@@ -580,7 +662,7 @@
    ============================================================ */
 const SUPABASE_URL = "https://tygakpgwgugkhjzlxbji.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR5Z2FrcGd3Z3Vna2hqemx4YmppIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAzNTUwNDYsImV4cCI6MjEwNTkzMTA0Nn0.X9_R-YF-hfyJF5bp5aIO1yrRrZLBYFfsJLLXa94oQ3Q";
-const DENOMS = [1,5,10,50,100,1000,5000,10000];
+const DENOMS = [1,5,10,50,100,500,1000,5000,10000];
 const CAT_ICONS = {
   "Vegetable":"🥕","Soft Drink":"🥤","Bike Fuel":"🏍️","Car Fuel":"⛽","Grocery Item":"🛒",
   "Processed Food":"🍛","Khizar Items":"🍼","Shopping":"👕","Home Decor & Maintenance":"🛠️",
@@ -604,11 +686,30 @@ const state = {
   openCat: {expense:null, income:null},
   openAccount: null,
   historyPage: 1,
-  historyFilters: {type:'all', account:'all', category:'all', start:null, end:null}
+  historyFilters: {type:'all', account:'all', category:'all', start:null, end:null},
+  expPassthrough: false,
+  userSettings: {cycle_start_day: 1},
+  dashSubView: 'overview',
+  budgetMonth: null,
+  budgetRows: {income:[], fixed_expense:[]}
 };
 
 const fmt = n => Math.round(n).toLocaleString('en-PK');
 const todayStr = d => d.toISOString().slice(0,10);
+
+// Entry-screen date fields default to today but can be backdated for a past transaction.
+function resetEntryDates(){
+  const t = todayStr(new Date());
+  ['expDate','incDate','trfDate'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value = t; });
+}
+
+// Combines a date-only string with the current clock time, so backdated
+// entries still get a sensible time-of-day instead of midnight.
+function dateWithNow(dateStr){
+  const now = new Date();
+  const timePart = now.toTimeString().slice(0,8);
+  return new Date(dateStr + 'T' + timePart).toISOString();
+}
 
 function toast(msg){
   const t = document.getElementById('toast');
@@ -691,10 +792,13 @@ async function enterApp(){
   await loadAllData();
   buildDenoms();
   wireStaticButtons();
+  resetEntryDates();
   renderExpenseView();
   renderIncomeView();
   renderTransferView();
   setupDashboardDefaults();
+  wireDashboardSubTabs();
+  state.budgetMonth = currentMonthStr();
   renderDashboard();
   renderSetup();
   setupHistoryDefaults();
@@ -705,16 +809,18 @@ async function enterApp(){
    DATA LOADING
    ============================================================ */
 async function loadAllData(){
-  const [m, a, c, t] = await Promise.all([
+  const [m, a, c, t, us] = await Promise.all([
     sb.from('members').select('*').order('sort_order'),
     sb.from('accounts').select('*').order('sort_order'),
     sb.from('categories').select('*').order('sort_order'),
-    sb.from('transactions').select('*').order('occurred_at', {ascending:false}).limit(5000)
+    sb.from('transactions').select('*').order('occurred_at', {ascending:false}).limit(5000),
+    sb.from('user_settings').select('*').maybeSingle()
   ]);
   state.members = m.data || [];
   state.accounts = a.data || [];
   state.categories = c.data || [];
   state.transactions = t.data || [];
+  state.userSettings = us.data || {cycle_start_day: 1};
 }
 
 async function refreshTransactions(){
@@ -812,12 +918,13 @@ async function saveTransfer(){
   const total = state.trfTaps.reduce((a,b)=>a+b,0);
   const sel = state.trfSel;
   const note = document.getElementById('trfNote').value.trim();
+  const dateStr = document.getElementById('trfDate').value || todayStr(new Date());
   const btn = document.getElementById('trfSaveBtn');
   btn.disabled = true; btn.textContent = 'Saving…';
 
   const { error } = await sb.from('transactions').insert({
     type:'transfer', amount: total, account_id: sel.from, to_account_id: sel.to,
-    member_id: sel.member, note: note || null
+    member_id: sel.member, note: note || null, occurred_at: dateWithNow(dateStr)
   });
 
   btn.textContent = 'Save transfer';
@@ -829,6 +936,7 @@ async function saveTransfer(){
 
   state.trfTaps=[]; state.trfSel={from:null,to:null,member:null};
   document.getElementById('trfNote').value='';
+  document.getElementById('trfDate').value = todayStr(new Date());
   document.querySelectorAll('#trfFromGrid .chip, #trfToGrid .chip, #trfMemberGrid .chip').forEach(c=>c.classList.remove('sel'));
   renderAmount('trf');
   updateSaveState('trf');
@@ -870,22 +978,32 @@ async function saveTransaction(type){
   const sel = isExp?state.expSel:state.incSel;
   const total = taps.reduce((a,b)=>a+b,0);
   const note = document.getElementById(isExp?'expNote':'incNote').value.trim();
+  const dateStr = document.getElementById(isExp?'expDate':'incDate').value || todayStr(new Date());
   const btn = document.getElementById(isExp?'expSaveBtn':'incSaveBtn');
   btn.disabled = true; btn.textContent = 'Saving…';
 
-  const { error } = await sb.from('transactions').insert({
+  const payload = {
     type, amount: total, account_id: sel.account, category_id: sel.category,
-    member_id: sel.member, note: note || null
-  });
+    member_id: sel.member, note: note || null, occurred_at: dateWithNow(dateStr)
+  };
+  if(isExp) payload.funded_by_passthrough = state.expPassthrough;
+
+  const { error } = await sb.from('transactions').insert(payload);
 
   btn.textContent = isExp ? 'Save expense' : 'Save income';
 
   if(error){ toast('Could not save: '+error.message); btn.disabled=false; return; }
 
-  toast((isExp?'Expense':'Income')+' of PKR '+fmt(total)+' saved');
-  if(isExp){ state.expTaps=[]; state.expSel={category:null,account:null,member:null}; document.getElementById('expNote').value=''; }
+  toast((isExp?'Expense':'Income')+' of PKR '+fmt(total)+' saved'+(isExp && state.expPassthrough ? ' (pass-through funds)' : ''));
+  if(isExp){
+    state.expTaps=[]; state.expSel={category:null,account:null,member:null}; document.getElementById('expNote').value='';
+    state.expPassthrough = false;
+    document.getElementById('expFundPersonal').classList.add('sel');
+    document.getElementById('expFundPassthrough').classList.remove('sel');
+  }
   else{ state.incTaps=[]; state.incSel={category:null,account:null,member:null}; document.getElementById('incNote').value=''; }
   document.querySelectorAll(`#${isExp?'expCategoryGrid':'incCategoryGrid'} .chip, #${isExp?'expAccountGrid':'incAccountGrid'} .chip, #${isExp?'expMemberGrid':'incMemberGrid'} .chip`).forEach(c=>c.classList.remove('sel'));
+  document.getElementById(isExp?'expDate':'incDate').value = todayStr(new Date());
   renderAmount(isExp?'exp':'inc');
   updateSaveState(isExp?'exp':'inc');
 
@@ -900,6 +1018,17 @@ function wireStaticButtons(){
   document.getElementById('expSaveBtn').addEventListener('click', ()=>saveTransaction('expense'));
   document.getElementById('incSaveBtn').addEventListener('click', ()=>saveTransaction('income'));
   document.getElementById('trfSaveBtn').addEventListener('click', saveTransfer);
+
+  document.getElementById('expFundPersonal').addEventListener('click', ()=>{
+    state.expPassthrough = false;
+    document.getElementById('expFundPersonal').classList.add('sel');
+    document.getElementById('expFundPassthrough').classList.remove('sel');
+  });
+  document.getElementById('expFundPassthrough').addEventListener('click', ()=>{
+    state.expPassthrough = true;
+    document.getElementById('expFundPassthrough').classList.add('sel');
+    document.getElementById('expFundPersonal').classList.remove('sel');
+  });
 
   document.getElementById('addCatBtn').addEventListener('click', async ()=>{
     const kind = document.getElementById('newCatKind').value;
@@ -964,19 +1093,45 @@ document.getElementById('bottomNav').addEventListener('click', e=>{
 /* ============================================================
    DASHBOARD
    ============================================================ */
+// Computes [start,end] for the user's custom billing cycle (e.g. 25th→25th).
+// which: 'this' = the cycle containing today; 'last' = the one before it.
+function cycleRange(which){
+  const day = state.userSettings.cycle_start_day || 1;
+  const now = new Date();
+  let anchorYear = now.getFullYear(), anchorMonth = now.getMonth();
+  // If today is before this month's cycle-start day, the current cycle began last month.
+  if(now.getDate() < day){ anchorMonth -= 1; if(anchorMonth<0){anchorMonth=11; anchorYear--;} }
+  if(which==='last'){ anchorMonth -= 1; if(anchorMonth<0){anchorMonth=11; anchorYear--;} }
+  const start = new Date(anchorYear, anchorMonth, day);
+  let endMonth = anchorMonth+1, endYear = anchorYear;
+  if(endMonth>11){endMonth=0; endYear++;}
+  const end = new Date(endYear, endMonth, day);
+  end.setDate(end.getDate()-1); // inclusive end = day before next cycle starts
+  const effectiveEnd = which==='this' && end > now ? now : end;
+  return [todayStr(start), todayStr(effectiveEnd)];
+}
+
 function setupDashboardDefaults(){
   const now = new Date();
   const first = new Date(now.getFullYear(), now.getMonth(), 1);
   state.dashStart = todayStr(first);
   state.dashEnd = todayStr(now);
-  document.getElementById('dashStart').value = state.dashStart;
-  document.getElementById('dashEnd').value = state.dashEnd;
-  document.getElementById('dashStart').addEventListener('change', e=>{ state.dashStart=e.target.value; renderDashboard(); });
-  document.getElementById('dashEnd').addEventListener('change', e=>{ state.dashEnd=e.target.value; renderDashboard(); });
+  const startEl = document.getElementById('dashStart');
+  const endEl = document.getElementById('dashEnd');
+  startEl.value = state.dashStart;
+  endEl.value = state.dashEnd;
+  // 'change' and 'input' both wired — some mobile browsers are inconsistent about
+  // which one fires reliably for <input type="date">.
+  ['change','input'].forEach(evt=>{
+    startEl.addEventListener(evt, e=>{ state.dashStart=e.target.value; renderDashboard(); });
+    endEl.addEventListener(evt, e=>{ state.dashEnd=e.target.value; renderDashboard(); });
+  });
 
   const quicks = [
     ['This month', ()=>{ const n=new Date(); return [todayStr(new Date(n.getFullYear(),n.getMonth(),1)), todayStr(n)]; }],
     ['Last month', ()=>{ const n=new Date(); const s=new Date(n.getFullYear(),n.getMonth()-1,1); const e=new Date(n.getFullYear(),n.getMonth(),0); return [todayStr(s), todayStr(e)]; }],
+    ['This cycle', ()=>cycleRange('this')],
+    ['Last cycle', ()=>cycleRange('last')],
     ['This year', ()=>{ const n=new Date(); return [todayStr(new Date(n.getFullYear(),0,1)), todayStr(n)]; }],
     ['All time', ()=>['2000-01-01', todayStr(new Date())]],
   ];
@@ -985,10 +1140,150 @@ function setupDashboardDefaults(){
     btn.addEventListener('click', ()=>{
       const [s,e] = quicks[i][1]();
       state.dashStart=s; state.dashEnd=e;
-      document.getElementById('dashStart').value=s; document.getElementById('dashEnd').value=e;
+      startEl.value=s; endEl.value=e;
       renderDashboard();
     });
   });
+}
+
+function wireDashboardSubTabs(){
+  const ov = document.getElementById('dashTabOverview');
+  const bg = document.getElementById('dashTabBudget');
+  wireOnce(ov, 'click', ()=>{
+    ov.classList.add('active'); bg.classList.remove('active');
+    document.getElementById('dashOverview').classList.remove('hidden');
+    document.getElementById('dashBudget').classList.add('hidden');
+    state.dashSubView='overview';
+  });
+  wireOnce(bg, 'click', ()=>{
+    bg.classList.add('active'); ov.classList.remove('active');
+    document.getElementById('dashOverview').classList.add('hidden');
+    document.getElementById('dashBudget').classList.remove('hidden');
+    state.dashSubView='budget';
+    renderBudgetPlan();
+  });
+  wireOnce(document.getElementById('budgetPrevMonth'), 'click', ()=>{ shiftBudgetMonth(-1); });
+  wireOnce(document.getElementById('budgetNextMonth'), 'click', ()=>{ shiftBudgetMonth(1); });
+  wireOnce(document.getElementById('bgAddIncomeBtn'), 'click', ()=>addBudgetRow('income'));
+  wireOnce(document.getElementById('bgAddFixedBtn'), 'click', ()=>addBudgetRow('fixed_expense'));
+}
+
+function currentMonthStr(){ const n=new Date(); return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0'); }
+
+function shiftBudgetMonth(delta){
+  const [y,m] = state.budgetMonth.split('-').map(Number);
+  const d = new Date(y, m-1+delta, 1);
+  state.budgetMonth = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+  renderBudgetPlan();
+}
+
+async function loadBudgetPlans(month){
+  const { data, error } = await sb.from('budget_plans').select('*').eq('month', month).order('sort_order');
+  if(error){
+    // table probably doesn't exist yet — migration not run
+    state.budgetRows = {income:[], fixed_expense:[]};
+    return false;
+  }
+  state.budgetRows = {
+    income: (data||[]).filter(r=>r.kind==='income'),
+    fixed_expense: (data||[]).filter(r=>r.kind==='fixed_expense')
+  };
+  return true;
+}
+
+function rowLabel(r){
+  if(r.category_id){ const c = state.categories.find(x=>x.id===r.category_id); if(c) return (c.icon||CAT_ICONS[c.name]||'📌')+' '+c.name; }
+  return r.label || 'Untitled';
+}
+
+async function renderBudgetPlan(){
+  if(!state.budgetMonth) state.budgetMonth = currentMonthStr();
+  const [y,m] = state.budgetMonth.split('-').map(Number);
+  const monthDate = new Date(y, m-1, 1);
+  document.getElementById('budgetMonthLabel').textContent = monthDate.toLocaleDateString('en-GB',{month:'long', year:'numeric'});
+
+  const ok = await loadBudgetPlans(state.budgetMonth);
+
+  // populate the "add" dropdowns
+  const incSel = document.getElementById('bgNewIncomeCat');
+  const fixSel = document.getElementById('bgNewFixedCat');
+  incSel.innerHTML = state.categories.filter(c=>c.kind==='income' && c.is_active).map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  fixSel.innerHTML = state.categories.filter(c=>c.kind==='expense' && c.is_active).map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+
+  if(!ok){
+    document.getElementById('bgIncomeList').innerHTML = `<div class="empty-state">Budget planning needs one more database migration — run supabase_migration_budget.sql once, then come back here.</div>`;
+    document.getElementById('bgFixedList').innerHTML = '';
+    return;
+  }
+
+  const incRows = state.budgetRows.income;
+  const fixRows = state.budgetRows.fixed_expense;
+
+  const rowHtml = (r, kind) => `<div class="cat-row ${kind==='income'?'income':'expense'}" style="cursor:default;">
+    <div class="top">
+      <div class="nm">${rowLabel(r)}${r.is_passthrough?' <span class="tag" style="margin-left:4px;">pass-through</span>':''}</div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div class="amt">PKR ${fmt(r.planned_amount)}</div>
+        <button data-id="${r.id}" class="bg-del" style="background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer;">✕</button>
+      </div>
+    </div>
+  </div>`;
+
+  document.getElementById('bgIncomeList').innerHTML = incRows.length
+    ? incRows.map(r=>rowHtml(r,'income')).join('')
+    : `<div class="empty-state">No planned income for this month yet.</div>`;
+  document.getElementById('bgFixedList').innerHTML = fixRows.length
+    ? fixRows.map(r=>rowHtml(r,'expense')).join('')
+    : `<div class="empty-state">No fixed expenses planned for this month yet.</div>`;
+
+  document.querySelectorAll('.bg-del').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const { error } = await sb.from('budget_plans').delete().eq('id', btn.dataset.id);
+      if(error){ toast('Could not remove: '+error.message); return; }
+      renderBudgetPlan();
+    });
+  });
+
+  const plannedIncome = incRows.filter(r=>!r.is_passthrough).reduce((s,r)=>s+Number(r.planned_amount),0);
+  const plannedFixed = fixRows.reduce((s,r)=>s+Number(r.planned_amount),0);
+  document.getElementById('bgPlannedIncome').textContent = fmt(plannedIncome);
+  document.getElementById('bgPlannedFixed').textContent = fmt(plannedFixed);
+  const projEl = document.getElementById('bgProjected');
+  const projected = plannedIncome - plannedFixed;
+  projEl.textContent = fmt(projected);
+  projEl.style.color = projected>=0 ? 'var(--income)' : 'var(--danger)';
+
+  // Actuals for this calendar month, for comparison against the plan
+  const monthStart = todayStr(monthDate);
+  const monthEndDate = new Date(y, m, 0);
+  const monthEnd = todayStr(monthEndDate);
+  const monthTx = state.transactions.filter(t=>{ const d=t.occurred_at.slice(0,10); return d>=monthStart && d<=monthEnd; });
+  const passthroughCatIds = new Set(state.categories.filter(c=>c.is_passthrough).map(c=>c.id));
+  const actualIncome = monthTx.filter(t=>t.type==='income' && !passthroughCatIds.has(t.category_id)).reduce((s,t)=>s+Number(t.amount),0);
+  const fixedCatIds = new Set(fixRows.map(r=>r.category_id).filter(Boolean));
+  const actualFixed = monthTx.filter(t=>t.type==='expense' && fixedCatIds.has(t.category_id)).reduce((s,t)=>s+Number(t.amount),0);
+  document.getElementById('bgActualIncome').textContent = 'PKR ' + fmt(actualIncome);
+  document.getElementById('bgActualFixed').textContent = 'PKR ' + fmt(actualFixed);
+}
+
+async function addBudgetRow(kind){
+  const isIncome = kind==='income';
+  const sel = document.getElementById(isIncome?'bgNewIncomeCat':'bgNewFixedCat');
+  const amtEl = document.getElementById(isIncome?'bgNewIncomeAmt':'bgNewFixedAmt');
+  const category_id = sel.value;
+  const amount = Number(amtEl.value);
+  if(!category_id || !amount || amount<=0){ toast('Pick a category and enter an amount'); return; }
+  const cat = state.categories.find(c=>c.id===category_id);
+  const existing = state.budgetRows[kind];
+  const maxOrder = existing.reduce((m,r)=>Math.max(m,r.sort_order||0),0);
+  const { error } = await sb.from('budget_plans').insert({
+    month: state.budgetMonth, kind, category_id, planned_amount: amount,
+    is_passthrough: isIncome ? !!(cat && cat.is_passthrough) : false,
+    sort_order: maxOrder+1
+  });
+  if(error){ toast('Could not save: '+error.message); return; }
+  amtEl.value = '';
+  renderBudgetPlan();
 }
 
 function inRange(tx){
@@ -1011,6 +1306,29 @@ function renderDashboard(){
   document.getElementById('sumTransfers').textContent = transfers.length
     ? `🔁 ${transfers.length} transfer${transfers.length!==1?'s':''} between your own accounts this period · PKR ${fmt(transferTotal)} (not counted as income or expense)`
     : '';
+
+  // Usable money (all-time, not period-filtered): separates money that's really yours
+  // from pass-through money (e.g. collected BC) you're only holding for someone else.
+  const passthroughCatIds = new Set(state.categories.filter(c=>c.is_passthrough).map(c=>c.id));
+  const personalIncome = state.transactions.filter(t=>t.type==='income' && !passthroughCatIds.has(t.category_id)).reduce((s,t)=>s+Number(t.amount),0);
+  const passthroughIncome = state.transactions.filter(t=>t.type==='income' && passthroughCatIds.has(t.category_id)).reduce((s,t)=>s+Number(t.amount),0);
+  const personalExpense = state.transactions.filter(t=>t.type==='expense' && !t.funded_by_passthrough).reduce((s,t)=>s+Number(t.amount),0);
+  const passthroughExpense = state.transactions.filter(t=>t.type==='expense' && t.funded_by_passthrough).reduce((s,t)=>s+Number(t.amount),0);
+  const usablePersonal = personalIncome - personalExpense;
+  const usablePassthrough = passthroughIncome - passthroughExpense;
+  const usablePersonalEl = document.getElementById('usablePersonalBal');
+  const usablePassthroughEl = document.getElementById('usablePassthroughBal');
+  usablePersonalEl.textContent = 'PKR ' + fmt(usablePersonal);
+  usablePersonalEl.classList.toggle('neg', usablePersonal<0);
+  usablePassthroughEl.textContent = 'PKR ' + fmt(usablePassthrough);
+  usablePassthroughEl.classList.toggle('neg', usablePassthrough<0);
+  const warnEl = document.getElementById('passthroughWarn');
+  if(usablePassthrough<0){
+    warnEl.classList.remove('hidden');
+    warnEl.textContent = `⚠️ You've spent PKR ${fmt(Math.abs(usablePassthrough))} more pass-through money than you currently hold — that much will need to come out of your own pocket when you settle up.`;
+  } else {
+    warnEl.classList.add('hidden');
+  }
 
   // Account balances (all-time, but tap a row to see that account's transactions in the selected period)
   const accHtml = state.accounts.filter(a=>a.is_active).map(a=>{
@@ -1128,7 +1446,7 @@ function renderTxRow(t){
   const d = new Date(t.occurred_at);
   return `<tr data-id="${t.id}">
     <td>${d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})}</td>
-    <td>PKR ${fmt(t.amount)}</td>
+    <td>PKR ${fmt(t.amount)}${t.funded_by_passthrough?' <span title="Paid from pass-through funds">🤝</span>':''}</td>
     <td>${acc?acc.name:'—'}</td>
     <td>${mem?mem.name:'—'}</td>
     <td>${t.note||''}</td>
@@ -1182,13 +1500,15 @@ function openEditRow(tr){
     const cats = state.categories.filter(c=>c.kind===kind && c.is_active);
     const catOpts = cats.map(c=>`<option value="${c.id}" ${c.id===t.category_id?'selected':''}>${c.name}</option>`).join('');
     const accOpts = state.accounts.filter(a=>a.is_active).map(a=>`<option value="${a.id}" ${a.id===t.account_id?'selected':''}>${a.name}</option>`).join('');
+    const ptCheckbox = kind==='expense' ? `<label class="sw" style="color:var(--muted);"><input type="checkbox" class="e-passthrough" ${t.funded_by_passthrough?'checked':''}> pass-through</label>` : '';
     fieldsHtml = `
       <input type="number" class="e-amt" value="${t.amount}" style="width:90px;">
       <select class="e-cat">${catOpts}</select>
       <select class="e-acc">${accOpts}</select>
       <select class="e-mem">${memOpts}</select>
       <input type="text" class="e-note" value="${t.note||''}" placeholder="Note" style="width:110px;">
-      <input type="date" class="e-date" value="${dateVal}">`;
+      <input type="date" class="e-date" value="${dateVal}">
+      ${ptCheckbox}`;
   }
 
   tr.innerHTML = `
@@ -1218,6 +1538,8 @@ function openEditRow(tr){
       const category_id = tr.querySelector('.e-cat').value;
       const account_id = tr.querySelector('.e-acc').value;
       payload = {amount, category_id, account_id, member_id, note, occurred_at};
+      const ptEl = tr.querySelector('.e-passthrough');
+      if(ptEl) payload.funded_by_passthrough = ptEl.checked;
     }
 
     const { error } = await sb.from('transactions').update(payload).eq('id', id);
@@ -1251,9 +1573,10 @@ function renderAccountTxRow(t, accId){
     color = t.type==='income' ? 'var(--income)' : 'var(--expense)';
     catLabel = cat?(cat.icon||CAT_ICONS[cat.name]||'📌')+' '+cat.name:'—';
   }
+  const pt = t.funded_by_passthrough ? ' 🤝' : '';
   return `<tr data-id="${t.id}">
     <td>${d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})}</td>
-    <td style="color:${color};font-weight:600;">${sign} PKR ${fmt(t.amount)}</td>
+    <td style="color:${color};font-weight:600;">${sign} PKR ${fmt(t.amount)}${pt}</td>
     <td>${catLabel}</td>
     <td>${mem?mem.name:'—'}</td>
     <td>${t.note||''}</td>
@@ -1426,11 +1749,12 @@ function renderHistoryRow(t){
   const sign = isTransfer ? '' : (t.type==='income' ? '+' : '−');
   const catLabel = isTransfer ? '🔁 Transfer' : (cat?(cat.icon||CAT_ICONS[cat.name]||'📌')+' '+cat.name:'—');
   const accLabel = isTransfer ? `${acc?acc.name:'—'} → ${toAcc?toAcc.name:'—'}` : (acc?acc.name:'—');
+  const pt = t.funded_by_passthrough ? ' 🤝' : '';
   return `<tr data-id="${t.id}">
     <td>${d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'})}</td>
     <td style="color:${color};text-transform:capitalize;">${t.type}</td>
     <td>${catLabel}</td>
-    <td style="color:${color};font-weight:600;">${sign} PKR ${fmt(t.amount)}</td>
+    <td style="color:${color};font-weight:600;">${sign} PKR ${fmt(t.amount)}${pt}</td>
     <td>${accLabel}</td>
     <td>${mem?mem.name:'—'}</td>
     <td>${t.note||''}</td>
@@ -1442,9 +1766,27 @@ function renderHistoryRow(t){
    SETUP
    ============================================================ */
 function renderSetup(){
+  renderCycleSetup();
   renderCatSetup();
   renderAcctSetup();
   renderMemberSetup();
+}
+
+function renderCycleSetup(){
+  const sel = document.getElementById('cycleStartDay');
+  const days = Array.from({length:28}, (_,i)=>i+1);
+  sel.innerHTML = days.map(d=>
+    `<option value="${d}">${d===1 ? 'Start on the 1st (normal calendar month)' : 'Start on the '+d+(d===2?'nd':d===3?'rd':'th')}</option>`
+  ).join('');
+  sel.value = String(state.userSettings.cycle_start_day || 1);
+  wireOnce(sel, 'change', async ()=>{
+    const day = Number(sel.value);
+    const { error } = await sb.from('user_settings').upsert({user_id: (await sb.auth.getUser()).data.user.id, cycle_start_day: day}, {onConflict:'user_id'});
+    if(error){ toast('Could not save: '+error.message); return; }
+    state.userSettings.cycle_start_day = day;
+    toast('Billing cycle updated');
+    renderDashboard();
+  });
 }
 
 async function reloadReferenceData(){
@@ -1462,10 +1804,21 @@ function renderCatSetup(){
   const inc = state.categories.filter(c=>c.kind==='income');
   const row = c => `<div class="setup-item">
     <span>${c.icon||CAT_ICONS[c.name]||'📌'} ${c.name}<span class="tag">${c.kind}</span></span>
-    <label class="sw"><input type="checkbox" data-id="${c.id}" data-table="categories" ${c.is_active?'checked':''}> active</label>
+    <div style="display:flex;gap:12px;align-items:center;">
+      ${c.kind==='income' ? `<label class="sw"><input type="checkbox" data-id="${c.id}" data-passthrough="1" ${c.is_passthrough?'checked':''}> pass-through</label>` : ''}
+      <label class="sw"><input type="checkbox" data-id="${c.id}" data-table="categories" ${c.is_active?'checked':''}> active</label>
+    </div>
   </div>`;
   document.getElementById('catSetupList').innerHTML = exp.map(row).join('') + inc.map(row).join('');
   wireActiveToggles('catSetupList');
+
+  document.getElementById('catSetupList').querySelectorAll('input[data-passthrough]').forEach(cb=>{
+    cb.addEventListener('change', async ()=>{
+      const { error } = await sb.from('categories').update({is_passthrough: cb.checked}).eq('id', cb.dataset.id);
+      if(error){ toast('Update failed: '+error.message); cb.checked=!cb.checked; return; }
+      await reloadReferenceData();
+    });
+  });
 }
 function renderAcctSetup(){
   document.getElementById('acctSetupList').innerHTML = state.accounts.map(a=>`<div class="setup-item">
