@@ -1112,10 +1112,9 @@ function cycleRange(which){
 }
 
 function setupDashboardDefaults(){
-  const now = new Date();
-  const first = new Date(now.getFullYear(), now.getMonth(), 1);
-  state.dashStart = todayStr(first);
-  state.dashEnd = todayStr(now);
+  const [cycleStart, cycleEnd] = cycleRange('this');
+  state.dashStart = cycleStart;
+  state.dashEnd = cycleEnd;
   const startEl = document.getElementById('dashStart');
   const endEl = document.getElementById('dashEnd');
   startEl.value = state.dashStart;
@@ -1784,7 +1783,13 @@ function renderCycleSetup(){
     const { error } = await sb.from('user_settings').upsert({user_id: (await sb.auth.getUser()).data.user.id, cycle_start_day: day}, {onConflict:'user_id'});
     if(error){ toast('Could not save: '+error.message); return; }
     state.userSettings.cycle_start_day = day;
-    toast('Billing cycle updated');
+    const [cycleStart, cycleEnd] = cycleRange('this');
+    state.dashStart = cycleStart; state.dashEnd = cycleEnd;
+    const startEl = document.getElementById('dashStart');
+    const endEl = document.getElementById('dashEnd');
+    if(startEl) startEl.value = cycleStart;
+    if(endEl) endEl.value = cycleEnd;
+    toast('Billing cycle updated — Dashboard now shows your new cycle');
     renderDashboard();
   });
 }
